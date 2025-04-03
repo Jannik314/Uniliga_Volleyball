@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="de">
+>
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Turnierübersicht</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      padding: 2rem;
+      background: #f4f6f9;
+      color: #333;
+    }
+
+    h1, h2 {
+      text-align: center;
+      color: #222;
+    }
+
+    .team-buttons {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .team-buttons button {
+      margin: 0.25rem;
+      padding: 0.5rem 1rem;
+      border: none;
+      background-color: #007acc;
+      color: white;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+
+    .team-buttons button:hover {
+      background-color: #005fa3;
+    }
+
+    .tables-wrapper {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-around;
+      gap: 2rem;
+    }
+
+    table {
+      background: white;
+      border-collapse: collapse;
+      box-shadow: 0 0 10px rgba(0,0,0,0.05);
+      border-radius: 6px;
+      overflow: hidden;
+      min-width: 300px;
+      max-width: 500px;
+      width: 100%;
+    }
+
+    th {
+      background-color: #007acc;
+      color: white;
+    }
+
+    th, td {
+      border: 1px solid #ddd;
+      padding: 0.5rem;
+      text-align: center;
+    }
+
+    tr.highlight {
+      background-color: #ffefaa !important;
+    }
+
+    tr:hover {
+      background-color: #f1f9ff;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    .result-input {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .result-input input {
+      width: 40px;
+      padding: 0.25rem;
+      text-align: center;
+      border: 1px solid #aaa;
+      border-radius: 4px;
+    }
+
+    /* Admin PIN Eingabe unten rechts */
+    .admin-corner {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      font-size: 12px;
+      opacity: 0.6;
+    }
+
+    .admin-corner input {
+      width: 60px;
+      font-size: 12px;
+      padding: 3px;
+    }
+
+    @media (max-width: 800px) {
+      .tables-wrapper {
+        flex-direction: column;
+        align-items: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Turnier & Liga Übersicht</h1>
+
+  <div class="team-buttons" id="teamButtons"></div>
+
+  <div class="tables-wrapper">
+    <div>
+      <h2>Gruppe A</h2>
+      <table id="groupA">
+        <thead>
+          <tr><th>Team</th><th>Spiele</th><th>Siege</th><th>Niederlagen</th><th>Punkte</th></tr>
+        </thead>
+        <tbody id="groupABody"></tbody>
+      </table>
+    </div>
+
+    <div>
+      <h2>Gruppe B</h2>
+      <table id="groupB">
+        <thead>
+          <tr><th>Team</th><th>Spiele</th><th>Siege</th><th>Niederlagen</th><th>Punkte</th></tr>
+        </thead>
+        <tbody id="groupBBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <h2>Spiele</h2>
+  <table id="matchTable">
+    <thead>
+      <tr><th>Datum</th><th>Team A</th><th>Team B</th><th>Ergebnis</th></tr>
+    </thead>
+    <tbody id="matchBody"></tbody>
+  </table>
+
+  <div class="admin-corner">
+    <input type="password" id="adminPinInput" placeholder="PIN" onkeypress="if(event.key === 'Enter') toggleAdmin()" />
+  </div>
+
+  <script>
+    const adminPin = "1234";
+    let isAdmin = false;
+
+    const teamsA = ["Team A1", "Team A2", "Team A3", "Team A4", "Team A5", "Team A6", "Team A7", "Team A8"];
+    const teamsB = ["Team B1", "Team B2", "Team B3", "Team B4", "Team B5", "Team B6", "Team B7", "Team B8"];
+    const allTeams = [...teamsA, ...teamsB];
+
+    let selectedTeam = null;
+    let allVisible = false;
+
+    const matches = [
+      { date: "01.04.", teamA: "Team A1", teamB: "Team A2", goalsA: "", goalsB: "" },
+      { date: "02.04.", teamA: "Team A3", teamB: "Team A4", goalsA: "", goalsB: "" },
+      { date: "03.04.", teamA: "Team B1", teamB: "Team B2", goalsA: "", goalsB: "" },
+      { date: "04.04.", teamA: "Team A1", teamB: "Team A3", goalsA: "", goalsB: "" },
+      { date: "05.04.", teamA: "Team B3", teamB: "Team B4", goalsA: "", goalsB: "" },
+    ];
+
+    function toggleAdmin() {
+      const input = document.getElementById("adminPinInput").value;
+      if (input === adminPin) {
+        isAdmin = true;
+        alert("Admin-Modus aktiviert");
+        populateMatches();
+      } else {
+        alert("Falscher PIN");
+      }
+    }
+
+    function createTeamTable(teams, tbodyId) {
+      const tbody = document.getElementById(tbodyId);
+      tbody.innerHTML = "";
+
+      const teamStats = teams.map(team => {
+        const stats = getStats(team);
+        return {
+          name: team,
+          ...stats
+        };
+      });
+
+      teamStats.sort((a, b) => {
+        if (b.wins !== a.wins) return b.wins - a.wins;
+        const diffA = a.goalsFor - a.goalsAgainst;
+        const diffB = b.goalsFor - b.goalsAgainst;
+        return diffB - diffA;
+      });
+
+      teamStats.forEach(team => {
+        const row = document.createElement("tr");
+        row.setAttribute("data-team", team.name);
+        row.innerHTML = `
+          <td>${team.name}</td>
+          <td class="played">${team.played}</td>
+          <td class="wins">${team.wins}</td>
+          <td class="losses">${team.losses}</td>
+          <td class="points">${team.goalsFor} : ${team.goalsAgainst}</td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    function getStats(team) {
+      let played = 0, wins = 0, losses = 0, goalsFor = 0, goalsAgainst = 0;
+      matches.forEach(m => {
+        const gA = parseInt(m.goalsA);
+        const gB = parseInt(m.goalsB);
+        if (!isNaN(gA) && !isNaN(gB)) {
+          let isA = m.teamA === team;
+          let isB = m.teamB === team;
+          if (isA || isB) {
+            played++;
+            const ownGoals = isA ? gA : gB;
+            const oppGoals = isA ? gB : gA;
+            goalsFor += ownGoals;
+            goalsAgainst += oppGoals;
+            if (ownGoals > oppGoals) wins++;
+            else if (ownGoals < oppGoals) losses++;
+          }
+        }
+      });
+      return { played, wins, losses, goalsFor, goalsAgainst };
+    }
+
+    function populateMatches() {
+      const tbody = document.getElementById("matchBody");
+      tbody.innerHTML = "";
+      matches.forEach((m, index) => {
+        const row = document.createElement("tr");
+        row.setAttribute("data-teams", `${m.teamA},${m.teamB}`);
+        row.setAttribute("data-index", index);
+        let resultContent = "-";
+        if (isAdmin) {
+          resultContent = `
+            <div class="result-input">
+              <input type="number" min="0" value="${m.goalsA}" onchange="updateResult(${index}, this.value, 'A')" />
+              <span>:</span>
+              <input type="number" min="0" value="${m.goalsB}" onchange="updateResult(${index}, this.value, 'B')" />
+            </div>`;
+        } else if (m.goalsA !== "" && m.goalsB !== "") {
+          resultContent = `${m.goalsA} : ${m.goalsB}`;
+        }
+        row.innerHTML = `
+          <td>${m.date}</td>
+          <td>${m.teamA}</td>
+          <td>${m.teamB}</td>
+          <td>${resultContent}</td>`;
+        tbody.appendChild(row);
+      });
+
+      updateTables();
+    }
+
+    function createTeamButtons() {
+      const container = document.getElementById("teamButtons");
+      container.innerHTML = "";
+      allTeams.forEach(team => {
+        const btn = document.createElement("button");
+        btn.textContent = team;
+        btn.onclick = () => {
+          selectedTeam = team;
+          allVisible = false;
+          filterForTeam(team);
+        };
+        container.appendChild(btn);
+      });
+
+      const resetBtn = document.createElement("button");
+      resetBtn.textContent = "Alle anzeigen";
+      resetBtn.onclick = () => {
+        if (allVisible) {
+          selectedTeam = null;
+          allVisible = false;
+          filterForTeam(null);
+        } else {
+          selectedTeam = null;
+          allVisible = true;
+          document.querySelectorAll("tr").forEach(row => row.classList.remove("highlight", "hidden"));
+        }
+      };
+      container.appendChild(resetBtn);
+    }
+
+    function filterForTeam(team) {
+      document.querySelectorAll("tbody tr").forEach(row => {
+        row.classList.remove("highlight");
+        if (row.getAttribute("data-team") === team) {
+          row.classList.add("highlight");
+        }
+      });
+
+      document.querySelectorAll("#matchBody tr").forEach(row => {
+        const teams = row.getAttribute("data-teams");
+        if (!team || teams.includes(team)) {
+          row.classList.remove("hidden");
+        } else {
+          row.classList.add("hidden");
+        }
+      });
+
+      updateTables();
+    }
+
+    function updateResult(index, value, teamPart) {
+      const parsed = parseInt(value);
+      if (!isNaN(parsed) && parsed >= 0) {
+        if (teamPart === 'A') matches[index].goalsA = parsed;
+        if (teamPart === 'B') matches[index].goalsB = parsed;
+      } else {
+        if (teamPart === 'A') matches[index].goalsA = "";
+        if (teamPart === 'B') matches[index].goalsB = "";
+      }
+      populateMatches();
+    }
+
+    function updateTables() {
+      createTeamTable(teamsA, "groupABody");
+      createTeamTable(teamsB, "groupBBody");
+    }
+
+    // Init
+    createTeamButtons();
+    populateMatches();
+  </script>
+</body>
+</html>
